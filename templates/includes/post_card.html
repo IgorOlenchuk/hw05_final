@@ -1,0 +1,22 @@
+{% include 'includes/thumbnail.html' %}
+    <div class="card-body">
+            <p class="card-text">
+                    <!-- Ссылка на страницу автора в атрибуте href; username автора в тексте ссылки -->
+                    <a href="{% url 'profile' profile %}"> {{ profile }} </a>
+                    <!-- Текст поста -->
+                    {{ post.text }}
+
+            </p>
+
+            <div class="d-flex justify-content-between align-items-center">
+                    <div class="btn-group ">
+                            <!-- Ссылка на редактирование, показывается только автору записи -->
+                            {% if user.is_authenticated %}
+                            <a class="btn btn-sm text-muted" href="{% url 'post_edit' user.username post.id %}" role="button">Редактировать</a>
+                            {% endif %}
+                    </div>
+                    <!-- Дата публикации  -->
+                    <small class="text-muted">{{ post.pub_date }}</small>
+            </div>
+    </div>
+</div>

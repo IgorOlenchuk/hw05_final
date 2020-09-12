@@ -1,0 +1,10 @@
+{% block title %}{% if edit %} Редактировать запись {% else %} Добавить запись {% endif %}{% endblock %}
+{% block header %}
+  {% if edit %}
+    <br>
+    <p class="col-md-6 offset-md-4">Редактировать запись</p>
+  <{% else %}
+    <br>
+    <p class="col-md-6 offset-md-4">Добавить запись</p>
+  {% endif %}
+{% endblock %}
