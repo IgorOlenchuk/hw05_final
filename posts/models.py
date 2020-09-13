@@ -60,3 +60,8 @@ class Follow(models.Model):
     author = models.ForeignKey(User,
                                on_delete=models.CASCADE,
                                related_name='following')
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(check=models.Q(user__gte='author'), name='user_gte_author'),
+        ]

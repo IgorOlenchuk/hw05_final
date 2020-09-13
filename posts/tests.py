@@ -1,10 +1,8 @@
-rom
-django.core.files.uploadedfile
 import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from .models import Group, Post, User
+from .models import Group, Post, User, Comment, Follow
 
 
 class SimpleTest(TestCase):
@@ -133,7 +131,44 @@ class SimpleTest(TestCase):
         with open('media/posts/file.jpg', 'wb+') as img:
             response = self.loggined_client.post(url,
                                                  data={'text': self.text, 'group': self.group.id, 'image': img})
-            url = reverse('a_post', kwargs={'username': self.loggined_user.username, 'post_id': 1})
+            url = reverse('a_post', kwargs={'username': self.loggined_user.username, 'post_id': post_id})
             response = self.loggined_client.get(url)
             templates_list = [template.source for template in response.templates if 'img' in template.source]
             self.assertTrue(len(templates_list) > 0)
+
+    def test_cache_on_main_page(self):
+        response = self.client_auth.get('/')
+        posts_count = len(response.context['page'])
+        self.client_auth.post(reverse('new_post'), {'text': 'post #2'})
+        response = self.client_auth.get('/')
+        posts_count_new = len(response.context['page'])
+        self.assertEqual(posts_count, posts_count_new)
+
+    def test_add_comment_logged(self):
+        response = self.logged.get(reverse('add_comment'))
+        self.assertEqual(response.status_code, 200)
+        content = {
+            'post_id': self.post_id,
+            'author': self.user,
+            'text': 'test_text'
+        }
+        self.logged.post(reverse('add_comment'), content, follow=True)
+        self.assertTrue(
+            Post.objects.all().exists()
+        )
+
+    def test_add_comment_unlogged(self):
+        content = {'post_id': self.post_id, 'text': 'test_text'}
+        response = self.unlogged.post(reverse('add_comment'),
+                                      content, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Post.objects.all().exists()
+
+
+    def test_follow_logged(self):
+        response = self.logged.get(reverse('profile_follow',
+                                           args=[self.user.username]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['author'].username,
+                         self.user.username)

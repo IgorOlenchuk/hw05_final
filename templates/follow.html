@@ -3,7 +3,7 @@
 {% block content %}
     <div class="container">
            {% load cache %}
-           {% cache 1200 index_page %}
+           {% cache 120 index_page %}
            <h1> Последние обновления Автора</h1>
             <!-- Вывод ленты записей -->
                 {% for post in page %}

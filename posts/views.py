@@ -40,36 +40,44 @@ def group_posts(request, slug):
 
 
 def new_post(request):
+    form = PostForm(request.POST)
     if request.method == 'POST':
-        form = PostForm(request.POST)
+        form = PostForm(
+                        request.POST,
+                        files=request.FILES or None,
+        )
         if form.is_valid():
             post = form.save(commit=False)
             post.author = request.user
             post.save()
             return redirect('index')
-    else:
-        form = PostForm()
-    return render(request, 'new.html', {'form': form})
+    labels = {
+        'title': "Добавить запись",
+        'button': "Добавить",
+    }
+    return render(request, 'new.html', {'form': form, 'labels': labels})
 
 
 def profile(request, username):
     profile = get_object_or_404(get_user_model(), username=username)
+    following = Follow.objects.filter(user=request.user)
     post_list = profile.author_posts.all()
     paginator = Paginator(post_list, 10)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
     count_post = profile.author_posts.all().count()
-    form = CommentForm(request.POST or None)
-    if request.method == 'POST':
-        if form.is_valid():
-            form.save()
-            return redirect("post", username=request.user.username, post_id=post_id)
+    count_follower = profile.follower.all().count()
+    count_following = profile.following.all().count()
+    form = CommentForm()
     context = {
         "profile": profile,
         'page': page,
         'paginator': paginator,
         'count_post': count_post,
+        'count_following': count_following,
+        'count_follower': count_follower,
         'form': form,
+        'following': following,
     }
     return render(request, 'profile.html', context)
 
@@ -100,7 +108,6 @@ def post_edit(request, username, post_id):
     post = get_object_or_404(Post, pk=post_id, author=profile)
     if request.user != profile:
         return redirect('post', username=username, post_id=post_id)
-    # добавим в form свойство files
     form = PostForm(request.POST or None, files=request.FILES or None, instance=post)
     if request.method == 'POST':
         if form.is_valid():
@@ -143,9 +150,11 @@ def add_comment(request, username, post_id):
 
 @login_required
 def follow_index(request):
-    follower = request.user.follower.all()
-    follower_list = [item.author for item in follower]
-    post_list = Post.objects.filter(author__in=follower_list)
+    authors = Follow.objects.filter(user=request.user)
+    post_list = Post.objects.filter(author__following__in=authors)
+    #follower = request.user.follower.all()
+    #follower_list = [item.author for item in follower]
+    #post_list = Post.objects.filter(author__in=follower_list)
     paginator = Paginator(post_list, 10)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
@@ -170,7 +179,7 @@ def profile_follow(request, username):
 def profile_unfollow(request, username):
     my_user = request.user
     profile = get_object_or_404(User, username=username)
-    authors = Follow.objects.filter(user=my_user, author=profile)
-    if authors.exists():
-        authors.delete()
+    subscription = Follow.objects.filter(user=my_user, author=profile)
+    if subscription.exists():
+        subscription.delete()
     return redirect("profile", username=request.user.username)
