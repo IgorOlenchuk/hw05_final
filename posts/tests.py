@@ -1,7 +1,10 @@
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
-from django.urls import reverse
 from django.core.cache import cache
-from .models import *
+from django.urls import reverse
+
+from .models import Post, Group, Comment, Follow
 
 User = get_user_model()
 
@@ -11,16 +14,15 @@ class ProfileTest(TestCase):
         self.client = Client()
         self.not_authorized_client = Client()
         self.user = User.objects.create_user(
-            username="maria")
+            username="anon")
         self.client.force_login(self.user)
-        self.group = Group.objects.create(title="test", slug="super",
+        self.group = Group.objects.create(title="test", slug="tt",
                                           description="test")
-        self.file_path = 'image.jpg'
-        self.post = Post.objects.create(text="New post",
+        self.post = Post.objects.create(text="This is my pre post!",
                                         author=self.user, group=self.group)
         self.second_author = User.objects.create_user(
-            username="igor")
-        self.post_of_2d_auth = Post.objects.create(text="second author",
+            username="anonymous_poet")
+        self.post_of_2d_auth = Post.objects.create(text="Second poet here!!",
                                                    author=self.second_author,
                                                    group=self.group)
         self.post_2d_author_list = list(
@@ -28,7 +30,7 @@ class ProfileTest(TestCase):
                 author=self.second_author).all())
         cache.clear()
 
-    def test_post_on_page(self, client, user, post):
+    def check_post_on_page(self, client, user, post):
         cache.clear()
         page_list = ["index", "profile", "post", "group"]
         kwargs_list = [{}, {"username": user}, {"username": user,
@@ -38,6 +40,7 @@ class ProfileTest(TestCase):
             response = client.get(reverse(pg, kwargs=kw))
             self.assertEqual(response.status_code, 200,
                              msg="Страница недоступна")
+            #у меня разные ветвления проверки, имхо:(
             if str(pg) != "post":
                 page_object = response.context["page"].object_list
                 self.assertTrue(post in page_object,
@@ -47,7 +50,7 @@ class ProfileTest(TestCase):
                 self.assertTrue(str(post) in page_object,
                                 msg="Пост отсутствует на странице")
 
-    def test_img_on_post(self, client, user, post):
+    def check_img_on_post(self, client, user, post):
         page_list = ["index", "profile", "post", "group"]
         kwargs_list = [{}, {"username": user}, {"username": user,
                                                 "post_id": post.pk},
@@ -77,7 +80,7 @@ class ProfileTest(TestCase):
         response = self.client.post(url, test_context, follow=True)
         self.assertEqual(response.status_code, 200,
                          msg="Пост не создан")
-        self.test_post_on_page(self.client, self.user,
+        self.check_post_on_page(self.client, self.user,
                                 post=Post.objects.last())
 
     def test_author_can_edit_post(self):
@@ -98,11 +101,12 @@ class ProfileTest(TestCase):
         self.assertContains(response,
                             test_context["text"], count=1, status_code=200,
                             msg_prefix='Пост встречается больше одного раза')
-        self.test_post_on_page(self.client, self.user,
+        self.check_post_on_page(self.client, self.user,
                                 post=Post.objects.last())
 
     def test_not_auth_user_cant_publishing_post(self):
-        url = reverse('new_post')
+        url = reverse("new_post")
+        #не нашёл нужный reverse. auth/ - это urls Django. Отвечает def redirect_to_login.
         redirect_url = f"/auth/login/?next={reverse('new_post')}"
         response = self.not_authorized_client.get(url)
         self.assertEqual(response.status_code, 302,
@@ -115,24 +119,29 @@ class ProfileTest(TestCase):
     def test_post_contains_image(self):
         url = reverse("new_post")
         expected_url = reverse("index")
-        with open(self.file_path, 'rb') as img:
-            test_context = {
-                "group": self.group.id,  # Optional
-                "text": "This is my first post!",
-                "image": img
-            }
-            response = self.client.post(url, test_context, follow=True)
-            self.assertEqual(response.status_code, 200,
-                             msg="Пост не создан")
-            self.assertRedirects(response, expected_url,
-                                 status_code=302,
-                                 target_status_code=200,
-                                 msg_prefix="Нет "
-                                            "перенаправления на главную "
-                                            "страницу",
-                                 fetch_redirect_response=True)
-            self.test_img_on_post(self.client, self.user,
-                                   post=Post.objects.first())
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x00\x00\x00\x21\xf9\x04'
+            b'\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02'
+            b'\x02\x4c\x01\x00\x3b'
+        )
+        uploaded = SimpleUploadedFile('small.gif', small_gif, content_type='image/gif')
+        test_context = {
+            "group": self.group.id,  # Optional
+            "text": "This is my first post!",
+            "image": uploaded
+        }
+        response = self.client.post(url, test_context, follow=True)
+        self.assertEqual(response.status_code, 200,
+                         msg="Пост не создан")
+        self.assertRedirects(response, expected_url,
+                             status_code=302,
+                             target_status_code=200,
+                             msg_prefix="Нет "
+                                        "перенаправления на главную "
+                                        "страницу",
+                             fetch_redirect_response=True)
+        self.check_img_on_post(self.client, self.user,
+                               post=Post.objects.first())
 
     def test_cache_on_main_page(self):
         self.assertEqual(Post.objects.count(), 2, msg="Неверное начальное "
@@ -152,37 +161,30 @@ class ProfileTest(TestCase):
         self.assertTrue(self.post in page_object,
                         msg="Пост отсутствует на странице")
 
-    def test_auth_user_can_follow_and_unfollow(self):
-        url = reverse("profile_follow", kwargs={"username":
-                                                    self.second_author})
-        redirect_url = f"/follow/"
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 302,
-                         msg="Страница подписки не доступна "
-                             "авторизованному пользователю")
-        self.assertRedirects(response, redirect_url, status_code=302,
-                             msg_prefix="Неверный редирект")
-        url = reverse("profile_unfollow",
-                      kwargs={"username": self.second_author})
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 302,
-                         msg="Функция отписки не доступна "
-                             "авторизованному пользователю")
+    def test_auth_follow(self):
+        test_user = User.objects.create_user(username="Igor")
+        self.client.get(
+            reverse("profile_follow", args=[test_user.username])
+        )
+        self.assertEqual(Follow.objects.count(), 1)
+
+    def test_auth_unfollow(self):
+        test_user = User.objects.create_user(username="Igor")
+        self.client.get(
+            reverse("profile_unfollow", args=[test_user.username])
+        )
+        self.assertEqual(Follow.objects.count(), 0)
 
     def test_not_auth_user_cant_follow(self):
-        url = reverse("profile_follow", kwargs={"username": self.user})
-        redirect_url = f"/auth/login/?next=/{self.user}/follow/"
-        response = self.not_authorized_client.get(url)
-        self.assertEqual(response.status_code, 302,
-                         msg="Страница подписки на автора доступна "
-                             "неавтризованному пользователю")
-        self.assertRedirects(response, redirect_url, status_code=302,
-                             msg_prefix="Неверный редирект")
+        self.client.post(
+            reverse("profile_follow", args=[self.client])
+        )
+        self.assertEqual(Follow.objects.count(), 0)
 
     def test_auth_user_can_comment_post(self):
         testpost = Post.objects.create(text="test text", author=self.user)
         url = reverse("add_comment", args=[self.user.username, testpost.id])
-        response = self.client.get(
+        response = self.client.post(
             url,
             {"text": "test comment"},
             follow=True,
@@ -190,14 +192,12 @@ class ProfileTest(TestCase):
         self.assertEqual(Comment.objects.count(), 1)
 
     def test_not_auth_user_cant_comment_post(self):
-        testpost = Post.objects.create(text="test text", author=self.user)
-        url = reverse("add_comment", args=[self.user.username, testpost.id])
-        response = self.not_authorized_client.get(
-            url,
-            {"text": "test comment"},
-            follow=True,
-        )
-        self.assertEqual(Comment.objects.count(), 0)
+        url = reverse("add_comment", kwargs={"username": self.user.username,
+                                             "post_id": self.post.pk})
+        response = self.not_authorized_client.get(url)
+        self.assertEqual(response.status_code, 302,
+                         msg="Страница комментирования доступна "
+                             "неавторизованному пользователю")
 
     def test_followed_auth_posts_on_page(self):
         self.client.get(reverse("profile_follow",
@@ -217,3 +217,33 @@ class ProfileTest(TestCase):
         self.assertNotIn(page_object, self.post_2d_author_list,
                          msg="На странице подписок присутствуют посты "
                              "авторов, подписка на которых не оформлена")
+
+    def test_404(self):
+        response = self.client.get('something/really/weird/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_wrong_file(self):
+        wrong_file = (
+            b"\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02"
+            b"\x02\x4c\x01\x00\x3b"
+        )
+        wrong = SimpleUploadedFile(
+            "wrong_file.doc",
+            wrong_file,
+            content_type="doc"
+        )
+        url = reverse("new_post")
+        data = {
+            "text": "Wrong image",
+            "group": self.group.id,
+            "image": wrong
+        }
+        response = self.client.post(url, data=data)
+        self.assertFormError(
+            response,
+            form="form",
+            field="image",
+            errors='Загрузите правильное изображение.'
+                   ' Файл, который вы загрузили,'
+                   ' поврежден или не является изображением.'
+        )

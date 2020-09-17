@@ -39,8 +39,9 @@ def group_posts(request, slug):
     return render(request, 'group.html', context)
 
 
+@login_required
 def new_post(request):
-    form = PostForm(request.POST)
+    form = PostForm()
     if request.method == 'POST':
         form = PostForm(
                         request.POST,
@@ -67,8 +68,8 @@ def profile(request, username):
     count_post = profile.author_posts.all().count()
     count_follower = profile.follower.all().count()
     count_following = profile.following.all().count()
-    #following = Follow.objects.filter(user=request.user, author=profile)
     form = CommentForm()
+    following = get_object_or_404(User, username=username)
     context = {
         "profile": profile,
         'page': page,
@@ -77,7 +78,7 @@ def profile(request, username):
         'count_following': count_following,
         'count_follower': count_follower,
         'form': form,
-        #'following': following,
+        'following': following,
     }
     return render(request, 'profile.html', context)
 
@@ -165,10 +166,11 @@ def follow_index(request):
 def profile_follow(request, username):
     follower = request.user
     following = get_object_or_404(User, username=username)
-    object_exists = Follow.objects.filter(user=follower, author=following)
-    if not username == follower.username and not object_exists:
-        Follow.objects.create(user=follower, author=following)
-    return redirect(reverse('profile', args=(username,)))
+    follows = Follow.objects.filter(user=follower, author=following)
+    if follows.exists() or follower.username == following.username:
+        return redirect("profile", username=username)
+    Follow.objects.create(user=follower, author=following)
+    return redirect("profile", username=username)
 
 
 @login_required
