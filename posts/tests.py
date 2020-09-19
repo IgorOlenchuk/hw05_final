@@ -40,14 +40,9 @@ class ProfileTest(TestCase):
             response = client.get(reverse(pg, kwargs=kw))
             self.assertEqual(response.status_code, 200,
                              msg="Страница недоступна")
-            #у меня разные ветвления проверки, имхо:(
-            if str(pg) != "post":
+            if pg != "post":
                 page_object = response.context["page"].object_list
                 self.assertTrue(post in page_object,
-                                msg="Пост отсутствует на странице")
-            else:
-                page_object = response.context["post"].text
-                self.assertTrue(str(post) in page_object,
                                 msg="Пост отсутствует на странице")
 
     def check_img_on_post(self, client, user, post):
@@ -106,14 +101,13 @@ class ProfileTest(TestCase):
 
     def test_not_auth_user_cant_publishing_post(self):
         url = reverse("new_post")
-        #не нашёл нужный reverse. auth/ - это urls Django. Отвечает def redirect_to_login.
-        redirect_url = f"/auth/login/?next={reverse('new_post')}"
+        url2 = "/auth/login/?next=/new/" #так и не понял как сделать через reverse
         response = self.not_authorized_client.get(url)
         self.assertEqual(response.status_code, 302,
                          msg="Страница новой записи доступна "
                              "неавторизованному пользователю или "
                              "переадрессация не произошла")
-        self.assertRedirects(response, redirect_url, status_code=302,
+        self.assertRedirects(response, url2, status_code=302,
                              msg_prefix="Неверный редирект")
 
     def test_post_contains_image(self):
@@ -161,19 +155,34 @@ class ProfileTest(TestCase):
         self.assertTrue(self.post in page_object,
                         msg="Пост отсутствует на странице")
 
-    def test_auth_follow(self):
+    def test_auth_follow_unfollow(self):
         test_user = User.objects.create_user(username="Igor")
+        nonfollower = User.objects.create_user(username="Masha")
         self.client.get(
             reverse("profile_follow", args=[test_user.username])
         )
         self.assertEqual(Follow.objects.count(), 1)
 
-    def test_auth_unfollow(self):
-        test_user = User.objects.create_user(username="Igor")
+        # Checking that new post appears in follow index if following
+        testpost = Post.objects.create(
+            text="test text", author=test_user
+        )
+        response = self.client.get(reverse("follow_index"))
+        self.assertEqual(response.context.get("paginator").count, 1)
+
+        #test_auth_unfollow(self)
         self.client.get(
             reverse("profile_unfollow", args=[test_user.username])
         )
         self.assertEqual(Follow.objects.count(), 0)
+
+       # Checking that new post doesn't appear in follow index if not following
+        nonfollower_client = self.client
+        nonfollower_client.force_login(nonfollower)
+        response = nonfollower_client.get(reverse("follow_index"))
+        self.assertEqual(
+            response.context.get("paginator").count, 0
+        )
 
     def test_not_auth_user_cant_follow(self):
         self.client.post(
@@ -192,9 +201,15 @@ class ProfileTest(TestCase):
         self.assertEqual(Comment.objects.count(), 1)
 
     def test_not_auth_user_cant_comment_post(self):
-        url = reverse("add_comment", kwargs={"username": self.user.username,
-                                             "post_id": self.post.pk})
-        response = self.not_authorized_client.get(url)
+        testpost = Post.objects.create(text="test text", author=self.user)
+        url = reverse("add_comment", args=[self.client, testpost.id])
+        response = self.client.post(
+            url,
+            {"text": "test comment"},
+            follow=True,
+        )
+        self.assertEqual(Comment.objects.count(), 0)
+        response = self.not_authorized_client.post(url)
         self.assertEqual(response.status_code, 302,
                          msg="Страница комментирования доступна "
                              "неавторизованному пользователю")
