@@ -1,7 +1,7 @@
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
-from django.core.cache import cache
 from django.urls import reverse
 
 from .models import Post, Group, Comment, Follow
@@ -40,10 +40,12 @@ class ProfileTest(TestCase):
             response = client.get(reverse(pg, kwargs=kw))
             self.assertEqual(response.status_code, 200,
                              msg="Страница недоступна")
-            if pg != "post":
+            if str(pg) != "post":
                 page_object = response.context["page"].object_list
-                self.assertTrue(post in page_object,
-                                msg="Пост отсутствует на странице")
+            else:
+                page_object = response.context["page"]
+            self.assertTrue(post in page_object,
+                            msg="Пост отсутствует на странице")
 
     def check_img_on_post(self, client, user, post):
         page_list = ["index", "profile", "post", "group"]
@@ -101,7 +103,7 @@ class ProfileTest(TestCase):
 
     def test_not_auth_user_cant_publishing_post(self):
         url = reverse("new_post")
-        url2 = "/auth/login/?next=/new/" #так и не понял как сделать через reverse
+        url2 = f"{reverse('login')}?next={reverse('new_post')}"
         response = self.not_authorized_client.get(url)
         self.assertEqual(response.status_code, 302,
                          msg="Страница новой записи доступна "
@@ -118,7 +120,11 @@ class ProfileTest(TestCase):
             b'\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02'
             b'\x02\x4c\x01\x00\x3b'
         )
-        uploaded = SimpleUploadedFile('small.gif', small_gif, content_type='image/gif')
+        uploaded = SimpleUploadedFile(
+            'small.gif',
+            small_gif,
+            content_type='image/gif'
+        )
         test_context = {
             "group": self.group.id,  # Optional
             "text": "This is my first post!",
@@ -157,59 +163,65 @@ class ProfileTest(TestCase):
 
     def test_auth_follow_unfollow(self):
         test_user = User.objects.create_user(username="Igor")
-        nonfollower = User.objects.create_user(username="Masha")
         self.client.get(
             reverse("profile_follow", args=[test_user.username])
         )
         self.assertEqual(Follow.objects.count(), 1)
-
-        # Checking that new post appears in follow index if following
         testpost = Post.objects.create(
             text="test text", author=test_user
         )
         response = self.client.get(reverse("follow_index"))
         self.assertEqual(response.context.get("paginator").count, 1)
 
-        #test_auth_unfollow(self)
+    def test_auth_unfollow(self):
+        test_user = User.objects.create_user(username="Igor")
+        testpost = Post.objects.create(
+            text="test text", author=test_user
+        )
+        self.client.get(
+            reverse("profile_follow", args=[test_user.username])
+        )
+        self.assertEqual(Follow.objects.count(), 1)
         self.client.get(
             reverse("profile_unfollow", args=[test_user.username])
         )
         self.assertEqual(Follow.objects.count(), 0)
-
-       # Checking that new post doesn't appear in follow index if not following
-        nonfollower_client = self.client
-        nonfollower_client.force_login(nonfollower)
-        response = nonfollower_client.get(reverse("follow_index"))
-        self.assertEqual(
-            response.context.get("paginator").count, 0
-        )
+        response = self.client.get(reverse("follow_index"))
+        self.assertEqual(response.context.get("paginator").count, 0)
 
     def test_not_auth_user_cant_follow(self):
         self.client.post(
             reverse("profile_follow", args=[self.client])
         )
         self.assertEqual(Follow.objects.count(), 0)
+        response = self.client.get(reverse("follow_index"))
+        self.assertEqual(
+            response.context.get("paginator").count, 0)
 
     def test_auth_user_can_comment_post(self):
         testpost = Post.objects.create(text="test text", author=self.user)
         url = reverse("add_comment", args=[self.user.username, testpost.id])
+        test_context = {
+            "text": "This is my comment",
+            "author": self.user,
+            "post": testpost.id,
+        }
         response = self.client.post(
             url,
-            {"text": "test comment"},
+            test_context,
             follow=True,
         )
         self.assertEqual(Comment.objects.count(), 1)
+        self.assertEqual(response.status_code, 200,
+                         msg="комментарий не создан")
 
     def test_not_auth_user_cant_comment_post(self):
         testpost = Post.objects.create(text="test text", author=self.user)
-        url = reverse("add_comment", args=[self.client, testpost.id])
-        response = self.client.post(
-            url,
-            {"text": "test comment"},
-            follow=True,
-        )
         self.assertEqual(Comment.objects.count(), 0)
-        response = self.not_authorized_client.post(url)
+        response = self.not_authorized_client.post(
+            reverse("add_comment",
+                    args=[self.user.username, testpost.id])
+        )
         self.assertEqual(response.status_code, 302,
                          msg="Страница комментирования доступна "
                              "неавторизованному пользователю")
