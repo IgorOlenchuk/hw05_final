@@ -161,23 +161,18 @@ class ProfileTest(TestCase):
         self.assertTrue(self.post in page_object,
                         msg="Пост отсутствует на странице")
 
-    def test_auth_follow_unfollow(self):
+    def test_auth_follow(self):
         test_user = User.objects.create_user(username="Igor")
         self.client.get(
             reverse("profile_follow", args=[test_user.username])
         )
         self.assertEqual(Follow.objects.count(), 1)
-        testpost = Post.objects.create(
-            text="test text", author=test_user
-        )
-        response = self.client.get(reverse("follow_index"))
-        self.assertEqual(response.context.get("paginator").count, 1)
+        subscribe = Follow.objects.first()
+        self.assertEqual(subscribe.user, self.user)
+        self.assertEqual(subscribe.author, test_user)
 
     def test_auth_unfollow(self):
         test_user = User.objects.create_user(username="Igor")
-        testpost = Post.objects.create(
-            text="test text", author=test_user
-        )
         self.client.get(
             reverse("profile_follow", args=[test_user.username])
         )
@@ -186,8 +181,6 @@ class ProfileTest(TestCase):
             reverse("profile_unfollow", args=[test_user.username])
         )
         self.assertEqual(Follow.objects.count(), 0)
-        response = self.client.get(reverse("follow_index"))
-        self.assertEqual(response.context.get("paginator").count, 0)
 
     def test_not_auth_user_cant_follow(self):
         self.client.post(
@@ -212,16 +205,20 @@ class ProfileTest(TestCase):
             follow=True,
         )
         self.assertEqual(Comment.objects.count(), 1)
+        comment = Comment.objects.first()
+        self.assertEqual(comment.author, self.user)
+        self.assertEqual(comment.text, 'This is my comment')
+        self.assertEqual(comment.post, testpost)
         self.assertEqual(response.status_code, 200,
                          msg="комментарий не создан")
 
     def test_not_auth_user_cant_comment_post(self):
         testpost = Post.objects.create(text="test text", author=self.user)
-        self.assertEqual(Comment.objects.count(), 0)
         response = self.not_authorized_client.post(
             reverse("add_comment",
                     args=[self.user.username, testpost.id])
         )
+        self.assertEqual(Comment.objects.count(), 0)
         self.assertEqual(response.status_code, 302,
                          msg="Страница комментирования доступна "
                              "неавторизованному пользователю")
