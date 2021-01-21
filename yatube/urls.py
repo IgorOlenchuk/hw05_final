@@ -5,6 +5,8 @@ from django.conf.urls import handler404, handler500
 from django.conf.urls.static import static
 from django.contrib.flatpages import views
 
+from rest_framework.authtoken import views as v
+
 handler404 = "posts.views.page_not_found" # noqa
 handler500 = "posts.views.server_error" # noqa
 
@@ -17,6 +19,12 @@ urlpatterns = [
     path('auth/', include('Users.urls')),
     path('auth/', include('django.contrib.auth.urls')),
 ]
+
+#добавить маршрут для получения токена:
+urlpatterns += [
+    path('api-token-auth/', v.obtain_auth_token)
+]
+
 #добавим новые пути
 urlpatterns += [
         path('about-us/', views.flatpage, {'url': '/about-us/'}, name='about'),
@@ -27,9 +35,12 @@ urlpatterns += [
         path('', include('posts.urls')),
 ]
 
+
 if settings.DEBUG:
     import debug_toolbar
 
     urlpatterns += (path("__debug__/", include(debug_toolbar.urls)),)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+

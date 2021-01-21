@@ -5,13 +5,20 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.views.decorators.cache import cache_page
 
-from .forms import PostForm, CommentForm
+from .forms import PostForm, CommentForm    
 from .models import Post, Group, Comment, Follow
+
+from django.http import JsonResponse
+from .serializers import PostSerializer
+
+from rest_framework import status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 User = get_user_model()
 
 
-@cache_page(60 * 15)
+#@cache_page(60 * 15)
 def index(request):
     post_list = Post.objects.order_by('-pub_date').all()
     paginator = Paginator(post_list, 10)
@@ -181,3 +188,11 @@ def profile_unfollow(request, username):
     if subscription.exists():
         subscription.delete()
     return redirect("profile", username=request.user.username)
+
+
+@api_view(['GET'])
+def get_post(request, post_id):
+    if request.method == 'GET':
+        post = get_object_or_404(Post, id=post_id)
+        serializer = PostSerializer(post)
+        return JsonResponse(serializer.data)

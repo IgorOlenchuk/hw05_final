@@ -2,8 +2,6 @@
 {% block title %} Последние обновления {% endblock %}
 {% block content %}
 <div class="container">
-       {% load cache %}
-       {% cache 900 index_page %}
            {% include "includes/menu.html" with index=True %}
                <h1> Последние обновления на сайте</h1>
                 <!-- Вывод ленты записей -->
@@ -11,7 +9,6 @@
                       <!-- Вот он, новый include! -->
                         {% include "includes/post_item.html" with post=post %}
                     {% endfor %}
-       {% endcache %}
                 <!-- Вывод паджинатора -->
                {% if page.has_other_pages %}
                     {% include "includes/paginator.html" with items=page paginator=paginator%}
